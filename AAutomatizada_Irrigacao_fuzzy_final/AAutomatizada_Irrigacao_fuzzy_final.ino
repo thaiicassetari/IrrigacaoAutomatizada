@@ -159,8 +159,6 @@ void loop() {
   int input1 = umidadeSensor(pinSensor1);
   int input2 = printTime();
 
-//----- FIM CODIGO P teste --------------------
-
   fuzzy->setInput(1, input1);
   fuzzy->setInput(2, input2);
   
