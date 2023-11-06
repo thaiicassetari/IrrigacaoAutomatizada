@@ -1,5 +1,5 @@
 # IrrigacaoAutomatizada
-Projeto de Irrigação automatizada com Arduino
+Projeto de Irrigação automatizada com Arduino. <br>
 Uso de lógica Fuzzy, conectores e sensores de terra. 
 
 <img src="/img/desenho-modelo.png"/>
