@@ -2,16 +2,15 @@
 #include "stdio.h"
 #include "DS1302.h"
 #include <Fuzzy.h>
-
 //************************************* PARAMETROS DO PROJETO ***************************************
 const int ClkPino = 5; // Pino Clk
 const int DatPino = 6; // Pino Dat para relogio
 const int RstPino = 7; // Pino Rst
-
 DS1302 rtc(RstPino, DatPino, ClkPino); //objeto dispositivo hora 
-#define pinSensor1 A0 //Porta sensor da terra ANALOGICO
 
-#define pinRele1 12  //Porta do arduino que irá acionar o relé
+#define pinSensor1 A0 // sensor da terra 
+ 
+#define pinRele1 12  //Porta relé
 #define nivelRele LOW
 
 #define pinVermelho1 8 
@@ -22,10 +21,14 @@ int leituraSensor;
 int leituraSensor1;
 int leituraAnterior1;
 
-//----------------------------------ASSINATURA FUNCOES
-int printTime();
-int umidadeSensor(int pinSensor);
+String sinais; //para enviar os sinais
 
+//----------------------------------ASSINATURA FUNCOES
+int getHour();
+char* getTime();
+
+
+int umidadeSensor(int pinSensor);
 Fuzzy *fuzzy = new Fuzzy();//--------Instanciação dos objetos fuzzy
 
 //umidadde - variaveis de entrada
@@ -45,12 +48,11 @@ FuzzySet *adiar = new FuzzySet(-1, 0, 0, 0);
 
 //************************************** CODIGO DE CONFIGURACAO ***************************************
 void setup() {
-  Serial.begin(9600); 
+  Serial.begin(9600);
+  delay(6000);            // Aguarda o sensor armar  
+  //dht.begin();            // Inicializa o sensor
 
-  rtc.writeProtect(false); //configuracao chip
-  rtc.halt(false);
-
-    //Definir a hora para seta-la no chip -> APENAS UMA VEZ
+   //Definir a hora para seta-la no chip -> APENAS UMA VEZ
    Time dataT(2023, 04, 05, 07, 12, 05, Time::kMonday); 
    rtc.time(dataT);
 
@@ -157,18 +159,27 @@ void setup() {
 void loop() {
   Time dataT = dataT;
   int input1 = umidadeSensor(pinSensor1);
-  int input2 = printTime();
-
+  int input2 = getHour();
+  float t = input1;  // Leitura da umidade 
+  float h = input2; // Leitura da hora
+  int a, i; // resultado e acao
+  
+  if (isnan(h) || isnan(t)) { // Verificar por erros
+    Serial.println("ERRO VARIAVEIS");   
+    return;
+  }
+  
   fuzzy->setInput(1, input1);
   fuzzy->setInput(2, input2);
-  
   fuzzy->fuzzify();
 
   int saida = fuzzy->defuzzify(1);
-  Serial.println("\n Result: ");
+  //("\n Result: ");
   if(saida == 1){
-    Serial.println("\t UMIDADE BAIXA OU MEDIA - HORA IDEAL -> IRRIGAR ");
-    Serial.print("\t ACIONAR \n\n");
+    a = 1; 
+    i = 1; 
+    //("\t UMIDADE BAIXA OU MEDIA - HORA IDEAL -> IRRIGAR ");
+    //("\t ACIONAR \n\n");
     digitalWrite(pinVermelho1, HIGH); //vermelho liga
     digitalWrite(pinVerde1, LOW); //verde desliga
     digitalWrite(pinRele1, nivelRele); //relé ativa
@@ -176,8 +187,10 @@ void loop() {
     digitalWrite(pinRele1, !nivelRele); //relé desativa
   }
   else if(saida == -1){
-    Serial.println("\t UMIDADE BAIXA OU MEDIA - HORA NAO IDEAL -> ADIAR ");
-    Serial.print("\t ADIAR \n\n");
+    a = 2;  
+    i = 2; 
+    //("\t UMIDADE BAIXA OU MEDIA - HORA NAO IDEAL -> ADIAR ");
+    //("\t ADIAR \n\n");
     digitalWrite(pinVermelho1, LOW); //vermelho desliga
     digitalWrite(pinVerde1, LOW); //verde desliga
     for(int i=0; i<=4; i++){
@@ -187,38 +200,59 @@ void loop() {
     } 
   }
   else{
-    Serial.println(" UMIDADE ALTA OU HORA NAO IDEAL -> NAO IRRIGAR ");
-    Serial.print("\t NAO ACIONAR \n\n");
+    a = 0;
+    i = 0;
+    //(" UMIDADE ALTA OU HORA NAO IDEAL -> NAO IRRIGAR ");
+    //("\t NAO ACIONAR \n\n");
     digitalWrite(pinVermelho1, LOW); //vermelho desliga
     digitalWrite(pinVerde1, HIGH); //verde liga
   }
-   delay(1000); 
+  //envia os sinais do sensor para o BD
+  Time dataTime = rtc.time(); //hora
+  sinais = String(t) + "|" +
+           String(h) + "|" +
+           String(a) + "|" +
+           String(i) + "|" +
+           String(dataTime.yr) + "|" +
+           String(dataTime.mon) + "|" +
+           String(dataTime.date) + "|";
+  Serial.println(sinais);
+  
+  delay(30000); 
 }
 
 //************************************** FUNCOES *********************************************************
 
-int printTime() {  //--------------------------------RELOGIO
-  Time dataT = rtc.time(); //hora
+int getHour() {  //hora
+  Time dataT = rtc.time();
+  
+  return (dataT.hr);
+}
+
+char* getTime() {  //data
+  Time dataT = rtc.time(); 
   char buf[70];
 
-    snprintf(buf, sizeof(buf), "%04d-%02d-%02d %02d:%02d:%02d", 
-    dataT.yr, dataT.mon, dataT.date, dataT.hr, dataT.min, dataT.sec);
+    //snprintf(buf, sizeof(buf), "%04d-%02d-%02d %02d:%02d:%02d", 
+    //dataT.yr, dataT.mon, dataT.date, dataT.hr, dataT.min, dataT.sec);
+    snprintf(buf, sizeof(buf), "%04d|%02d|%02d",  
+    dataT.yr, dataT.mon, dataT.day);
 
-    Serial.print("\t LEITURA DATA: ");
-    Serial.println(buf);
-    return dataT.hr;
+    //Serial.print("\t LEITURA DATA/HORA: ");
+    //Serial.println(buf);
+    return (dataT.hr);
     
 }//--------------------------------FIM
 
-int umidadeSensor(int pinSensor){ //--------------------------------LEITURA SENSOR
+int umidadeSensor(int pinSensor){ //LEITURA SENSOR
 
-  digitalWrite(pinAmarelo, HIGH); //amarelo liga
+  digitalWrite(pinAmarelo, HIGH); 
   int leituraSensor = analogRead(A0);
-  int porcento = map(leituraSensor, 600, 1023, 100, 0);  //usada para mapear esse valor da faixa original de 0 a 1023 para a faixa desejada de 0 a 100.
+  int porcento = map(leituraSensor, 600, 1023, 100, 0);  //da faixa original de 0 a 1023 para a faixa desejada de 0 a 100.
 
-  Serial.print("\t LEITURA SENSOR: ");
-  Serial.print(porcento);
-  Serial.println("%");
+  //Serial.print("\t LEITURA SENSOR: ");
+  //Serial.print(porcento);
+  //Serial.println("%");
   
   delay(3000);
   digitalWrite(pinAmarelo, LOW); //amarelo desliga
